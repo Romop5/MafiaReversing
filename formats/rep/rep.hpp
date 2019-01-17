@@ -1,6 +1,7 @@
 #include <string>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 namespace RepFile
 {
@@ -14,6 +15,8 @@ namespace RepFile
  *  4. followingSequenceSize (unk)
  *
  */
+
+const uint32_t magicByteConstant = 0x1631;
 
 #pragma pack(push,1)
 struct Header
@@ -32,16 +35,18 @@ struct Header
     uint32_t countOfAnimations; // the number of animation blocks following header
     uint32_t unknown;
 };
-#pragma pop()
+#pragma pack(pop)
 
 class AnimationBlock
 {
     uint32_t animationID;
-    
+    char animationName[48];
 };
 
 class File
 {
+	public:
+	std::vector<AnimationBlock> animationBlocks;
 
 };
 
@@ -50,6 +55,18 @@ class File
 class Loader
 {
     private:
+	friend File;
+	Header fileHeader;
+	File currentFile;
+	void readAnimations(std::ifstream& stream)
+	{
+		for(size_t i = 0; i < fileHeader.countOfAnimations; i++)
+		{
+			AnimationBlock animationBlock;
+			memset(&animationBlock,0,52);
+			currentFile.animationBlocks.push_back(animationBlock);
+		}
+	}
     
     public:
         File loadFile(std::string fileName)
@@ -59,13 +76,19 @@ class Loader
 		inputFile.open(fileName, std::ifstream::binary);
 		if(inputFile.is_open())
 		{
-			uint32_t magicByte;
-			Header fileHeader;
 			inputFile.READ(fileHeader);
 			std::cout << "Magic Byte: " << fileHeader.magicByte << std::endl;
 			std::cout << "Anim block size: " << fileHeader.animationBlockSize << std::endl;
 			std::cout << "Count of anims: " << fileHeader.countOfAnimations<< std::endl;
+			if(fileHeader.magicByte != magicByteConstant)
+			{
+				std::cerr << "[Err] Invalid magic byte ...\n" << std::endl;
+				return File();
+			}
+			
+			readAnimations(inputFile);
 		}
+		return currentFile;
         }
 };
 }
