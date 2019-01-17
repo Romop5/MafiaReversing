@@ -113,47 +113,38 @@ class Loader
 	void readTransformation(std::ifstream& stream)
 	{
 		std::cerr << "TransformSequence" << std::endl;
-		for(size_t i = 0; i < fileHeader.followingSequenceSize; )
+		uint32_t startunk1;
+		uint32_t startunk2;
+		stream.READ(startunk1);
+		stream.READ(startunk2);
+		for(size_t i = 8; i < fileHeader.followingSequenceSize; )
 		{
-			FollowingStructHeader header;
-			memset(&header,0,16);
-			stream.READ(header);
-			FollowingStructTransform body;
-			switch(header.probablyType)
-			{
-				case 1:
-					{
-						stream.READ(body);
-						i += 24;
-					}
-					break;
-				case 2: {
-						stream.READ(body);
-						float unk;
-						stream.READ(unk);
-						i += 24+4;
-					}
-					break;
-				case 0:
-					{
-						uint32_t unk1;
-						uint32_t realType;
-						stream.READ(unk1);
-						stream.READ(realType);
-						stream.READ(body);
-						uint32_t unk;
-						if(realType == 2)
-						{
-							stream.READ(unk);
-							i += 4;
-						}
-						i += 24;
-					}
-					break;
+			uint32_t unkWhatever;
+			uint32_t type;
+			stream.READ(unkWhatever);
+			stream.READ(type);
 
+			if(type == 0)
+			{
+				float unk7;
+				stream.READ(unk7);
+				stream.READ(type);
+			}
+			FollowingStructTransform body;
+			stream.READ(body);
+			float unk5;
+			stream.READ(unk5);
+			float unk6;
+			stream.READ(unk6);
+			i += 40;
+			if(type == 2)
+			{
+				float unk;
+				stream.READ(unk);
+				i += 4;
 			}
 			//currentFile.postanimationBlocks.push_back(postanimationBlock);
-			std::cerr << "[TransformSequence] " << "Type: " << header.probablyType  << " ["<< body.position[0] << "," << body.position[1] << "," << body.position[2] << "] ["
+			std::cerr << "[TransformSequence] " << "Type: " << type << " ["<< body.position[0] << "," << body.position[1] << "," << body.position[2] << "] ["
 				<< body.rotation[0] << "," << body.rotation[1] << "," << body.rotation[2] << "]\n";
 		}
 
