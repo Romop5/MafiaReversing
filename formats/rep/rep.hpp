@@ -35,18 +35,27 @@ struct Header
     uint32_t countOfAnimations; // the number of animation blocks following header
     uint32_t unknown;
 };
-#pragma pack(pop)
 
-class AnimationBlock
+struct AnimationBlock
 {
     uint32_t animationID;
     char animationName[48];
 };
 
+struct PostanimationBlock 
+{
+    char modelName[36];
+    char frameName[36];
+    unsigned char unk[36];
+};
+
+#pragma pack(pop)
+
 class File
 {
 	public:
 	std::vector<AnimationBlock> animationBlocks;
+	std::vector<PostanimationBlock> postanimationBlocks;
 
 };
 
@@ -60,12 +69,29 @@ class Loader
 	File currentFile;
 	void readAnimations(std::ifstream& stream)
 	{
+		std::cerr << "AnimationStart" << std::endl;
 		for(size_t i = 0; i < fileHeader.countOfAnimations; i++)
 		{
 			AnimationBlock animationBlock;
 			memset(&animationBlock,0,52);
+			stream.READ(animationBlock);
 			currentFile.animationBlocks.push_back(animationBlock);
+			std::cerr << "[Animation Block] " << animationBlock.animationID << " - " << animationBlock.animationName << std::endl;
 		}
+	}
+
+	void readFrameSequences(std::ifstream& stream)
+	{
+		std::cerr << "FrameSequence" << std::endl;
+		for(size_t i = 0; i < fileHeader.frameSequenceBlocks; i++)
+		{
+			PostanimationBlock postanimationBlock;
+			memset(&postanimationBlock,0,108);
+			stream.READ(postanimationBlock);
+			currentFile.postanimationBlocks.push_back(postanimationBlock);
+			std::cerr << "[FrameSequence Block] " << postanimationBlock.frameName << " - " << postanimationBlock.modelName << std::endl;
+		}
+
 	}
     
     public:
@@ -77,7 +103,7 @@ class Loader
 		if(inputFile.is_open())
 		{
 			inputFile.READ(fileHeader);
-			std::cout << "Magic Byte: " << fileHeader.magicByte << std::endl;
+			std::cout << "Magic Byte: " << std::hex << fileHeader.magicByte << std::dec << std::endl;
 			std::cout << "Anim block size: " << fileHeader.animationBlockSize << std::endl;
 			std::cout << "Count of anims: " << fileHeader.countOfAnimations<< std::endl;
 			if(fileHeader.magicByte != magicByteConstant)
@@ -87,6 +113,9 @@ class Loader
 			}
 			
 			readAnimations(inputFile);
+			readFrameSequences(inputFile);
+		} else {
+			std::cerr << "[Err] Failed to open file " << fileName  << std::endl;
 		}
 		return currentFile;
         }
