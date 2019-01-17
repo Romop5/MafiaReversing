@@ -23,7 +23,7 @@ struct Header
 {
 	uint32_t magicByte;	// 0x31 16 00 00
 	uint32_t animationBlockSize; // the size (in bytes) of all animation blocks together 
-	uint32_t followingSequenceSize;
+	uint32_t followingSequenceSize; // contains positions (with some auxiliary info) = probably camera tracks ?
 	uint32_t frameSequenceBlocks; // *108 to get size in bytes
 	uint32_t unkCCSequence; // CC CC CC CC 
 	uint32_t unk3;
@@ -42,11 +42,27 @@ struct AnimationBlock
     char animationName[48];
 };
 
+// TODO-rename
 struct PostanimationBlock 
 {
     char modelName[36];
     char frameName[36];
     unsigned char unk[36];
+};
+
+// TODO-rename
+struct FollowingStructHeader
+{
+	uint32_t unkZero;
+	uint32_t unkTimestamp;
+	uint32_t unkTimestamp2; // increasing
+	uint32_t probablyType; // usually 1 or 2
+};
+
+struct FollowingStructTransform
+{
+	float position[3];
+	float rotation[3]; // maybe rotation in angles
 };
 
 #pragma pack(pop)
@@ -93,6 +109,56 @@ class Loader
 		}
 
 	}
+
+	void readTransformation(std::ifstream& stream)
+	{
+		std::cerr << "TransformSequence" << std::endl;
+		for(size_t i = 0; i < fileHeader.followingSequenceSize; )
+		{
+			FollowingStructHeader header;
+			memset(&header,0,16);
+			stream.READ(header);
+			FollowingStructTransform body;
+			switch(header.probablyType)
+			{
+				case 1:
+					{
+						stream.READ(body);
+						i += 24;
+					}
+					break;
+				case 2: {
+						stream.READ(body);
+						float unk;
+						stream.READ(unk);
+						i += 24+4;
+					}
+					break;
+				case 0:
+					{
+						uint32_t unk1;
+						uint32_t realType;
+						stream.READ(unk1);
+						stream.READ(realType);
+						stream.READ(body);
+						uint32_t unk;
+						if(realType == 2)
+						{
+							stream.READ(unk);
+							i += 4;
+						}
+						i += 24;
+					}
+					break;
+
+			}
+			//currentFile.postanimationBlocks.push_back(postanimationBlock);
+			std::cerr << "[TransformSequence] " << "Type: " << header.probablyType  << " ["<< body.position[0] << "," << body.position[1] << "," << body.position[2] << "] ["
+				<< body.rotation[0] << "," << body.rotation[1] << "," << body.rotation[2] << "]\n";
+		}
+
+	}
+
     
     public:
         File loadFile(std::string fileName)
@@ -114,6 +180,7 @@ class Loader
 			
 			readAnimations(inputFile);
 			readFrameSequences(inputFile);
+			readTransformation(inputFile);
 		} else {
 			std::cerr << "[Err] Failed to open file " << fileName  << std::endl;
 		}
