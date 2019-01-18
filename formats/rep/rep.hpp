@@ -36,18 +36,32 @@ struct Header
     uint32_t unknown;
 };
 
+/* 
+ * \brief Contains animations 
+ *
+ * PROBABLY a way how to preload animations and usem them in the sequence of object state
+ * transitions
+ */
 struct AnimationBlock
 {
     uint32_t animationID;
     char animationName[48];
 };
 
-// TODO-rename
-struct PostanimationBlock 
+/*
+ * \brief Describes animated objects
+ *
+ * For each object in cutscene, an actor (or specialized object) is assigned to scene's frame
+ * (frameName) and additional meta information are enclosed such as size of animation blocks in
+ * animation transformation stream
+ *
+ */
+struct AnimatedObjectDefinitions 
 {
-    char modelName[36];
     char frameName[36];
-    unsigned char unk[36];
+    char actorName[36];
+    uint32_t sizeOfBlocks[4];
+    unsigned char unk[20];
 };
 
 // TODO-rename
@@ -62,7 +76,7 @@ struct FollowingStructHeader
 struct FollowingStructTransform
 {
 	float position[3];
-	float rotation[3]; // maybe rotation in angles
+	float rotation[4]; // maybe rotation in angles
 };
 
 #pragma pack(pop)
@@ -105,7 +119,13 @@ class Loader
 			memset(&postanimationBlock,0,108);
 			stream.READ(postanimationBlock);
 			currentFile.postanimationBlocks.push_back(postanimationBlock);
-			std::cerr << "[FrameSequence Block] " << postanimationBlock.frameName << " - " << postanimationBlock.modelName << std::endl;
+			std::cerr << "[FrameSequence Block] " << postanimationBlock.frameName << " - " << postanimationBlock.actorName<< std::endl;
+                        std::cerr << "[FS] ";
+                        for(int i = 0; i < 4; i++)
+                        {
+                            std::cerr << postanimationBlock.sizeOfBlocks[i] << " ";
+                        }
+                        std::cerr << std::endl;
 		}
 
 	}
@@ -132,8 +152,6 @@ class Loader
 			}
 			FollowingStructTransform body;
 			stream.READ(body);
-			float unk5;
-			stream.READ(unk5);
 			float unk6;
 			stream.READ(unk6);
 			i += 40;
@@ -144,8 +162,8 @@ class Loader
 				i += 4;
 			}
 			//currentFile.postanimationBlocks.push_back(postanimationBlock);
-			std::cerr << "[TransformSequence] Position: " << std::hex << i << std::dex << "Type: " << type << " ["<< body.position[0] << "," << body.position[1] << "," << body.position[2] << "] ["
-				<< body.rotation[0] << "," << body.rotation[1] << "," << body.rotation[2] << "]\n";
+			std::cerr << "[TransformSequence] Whatever: " << std::hex << unkWhatever << " Position: " << std::hex << i << std::dec << "\t Type: " << type << " ["<< body.position[0] << "," << body.position[1] << "," << body.position[2] << "] ["
+				<< body.rotation[0] << "," << body.rotation[1] << "," << body.rotation[2] << "," << body.rotation[3] << "]\n";
 		}
 
 	}
