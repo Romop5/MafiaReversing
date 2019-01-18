@@ -144,7 +144,7 @@ class Loader
 				i += 4;
 			}
 			//currentFile.postanimationBlocks.push_back(postanimationBlock);
-			std::cerr << "[TransformSequence] " << "Type: " << type << " ["<< body.position[0] << "," << body.position[1] << "," << body.position[2] << "] ["
+			std::cerr << "[TransformSequence] Position: " << std::hex << i << std::dex << "Type: " << type << " ["<< body.position[0] << "," << body.position[1] << "," << body.position[2] << "] ["
 				<< body.rotation[0] << "," << body.rotation[1] << "," << body.rotation[2] << "]\n";
 		}
 

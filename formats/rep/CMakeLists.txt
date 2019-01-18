@@ -1,3 +1,3 @@
 project(reploader)
 
-add_executable(reploader main.cpp)
+add_executable(reploader rep.hpp main.cpp)
