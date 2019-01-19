@@ -60,8 +60,16 @@ struct AnimatedObjectDefinitions
 {
     char frameName[36];
     char actorName[36];
-    uint32_t sizeOfBlocks[4];
-    unsigned char unk[20];
+    uint32_t sizeOfBlocks[4];   // size of different blocks
+    unsigned char unk[12];
+    uint32_t sizeOfStreamSection; // size of all blocks for this object together
+    uint32_t unk2;
+};
+
+struct TransformationHeader
+{
+    uint32_t timestamp; // the beggining of transformation
+    uint32_t type; // 1 or 2
 };
 
 // TODO-rename
@@ -85,7 +93,7 @@ class File
 {
 	public:
 	std::vector<AnimationBlock> animationBlocks;
-	std::vector<PostanimationBlock> postanimationBlocks;
+	std::vector<AnimatedObjectDefinitions> postanimationBlocks;
 
 };
 
@@ -115,11 +123,11 @@ class Loader
 		std::cerr << "FrameSequence" << std::endl;
 		for(size_t i = 0; i < fileHeader.frameSequenceBlocks; i++)
 		{
-			PostanimationBlock postanimationBlock;
+			AnimatedObjectDefinitions postanimationBlock;
 			memset(&postanimationBlock,0,108);
 			stream.READ(postanimationBlock);
 			currentFile.postanimationBlocks.push_back(postanimationBlock);
-			std::cerr << "[FrameSequence Block] " << postanimationBlock.frameName << " - " << postanimationBlock.actorName<< std::endl;
+			std::cerr << "[FrameSequence Block] " << postanimationBlock.frameName << " - " << postanimationBlock.actorName<< " - " << std::hex << postanimationBlock.sizeOfStreamSection << std::dec << std::endl;
                         std::cerr << "[FS] ";
                         for(int i = 0; i < 4; i++)
                         {
@@ -132,6 +140,40 @@ class Loader
 
 	void readTransformation(std::ifstream& stream)
 	{
+            size_t endPointer= 0;
+            size_t currentPointer = 0;
+            // for each animated object 
+            for(size_t i = 0; i < fileHeader.frameSequenceBlocks; i++)
+            {
+                std::cerr << "Reading object: " << i << std::endl;
+                endPointer = currentPointer + currentFile.postanimationBlocks[i].sizeOfStreamSection;
+                uint32_t zeroUnkBlock;
+                // Skip leading 8 bytes
+                stream.READ(zeroUnkBlock);
+                stream.READ(zeroUnkBlock);
+                currentPointer += 8;
+
+                // for all blocks for current animated object
+                while(endPointer > currentPointer)
+                {
+                    std::cerr << "Position: " << std::hex << currentPointer << std::dec << std::endl;
+                    // get header with timestamp / type
+                    TransformationHeader header;
+                    stream.READ(header);
+                    currentPointer += 8;
+
+                    // get payload size (-8 is for header)
+                    size_t payloadLength = currentFile.postanimationBlocks[i].sizeOfBlocks[header.type]-8;
+                    currentPointer += payloadLength;
+                    // read payload
+                    unsigned char payload[512];
+                    stream.read(reinterpret_cast<char*>(&payload), payloadLength);
+                    std::cerr << "[TransformSequence] Type: " << header.type << " Read chunk with size: " << payloadLength << std::endl;
+                }
+
+                
+            }
+            /*
 		std::cerr << "TransformSequence" << std::endl;
 		uint32_t startunk1;
 		uint32_t startunk2;
@@ -165,6 +207,7 @@ class Loader
 			std::cerr << "[TransformSequence] Whatever: " << std::hex << unkWhatever << " Position: " << std::hex << i << std::dec << "\t Type: " << type << " ["<< body.position[0] << "," << body.position[1] << "," << body.position[2] << "] ["
 				<< body.rotation[0] << "," << body.rotation[1] << "," << body.rotation[2] << "," << body.rotation[3] << "]\n";
 		}
+                */
 
 	}
 
