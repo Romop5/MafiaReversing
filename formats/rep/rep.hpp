@@ -1,3 +1,10 @@
+/*
+ * .rep file printer
+ * Author: Roman Romop5 Dobias
+ * Purpose: print outs content of .rep file
+ * Credits also go to guys from Lost Heaven Modding's wiki, who provided basics of .rep structure
+ */
+
 #include <string>
 #include <fstream>
 #include <iostream>
@@ -9,11 +16,17 @@ namespace RepFile
 /*
  * Simplified file structure
  *  1. RepFile header
- *  2. for N where N = header.countOfAnimations
- *      2. animation block
- *  3. frame sequences = overall size is frameSequenceBlocks*108
- *  4. followingSequenceSize (unk)
- *
+ *  2. for N where N = header.countOfAnimationBlocks
+ *      2. animation block (with ID / name)
+ *  3. for N in objectDefinitionBlocks
+ *      4. object definition:
+ *          frameName = binds object to frame with this name
+ *          actorName = assigns actor to frameName
+ *          size of transform stream chunks (for type 1 and 2)
+ *  5. for N in objectDefinitionBlocks
+ *      while readBytes < objectDefinition.sizeOfStream
+ *          6. read transformation chunk 
+ *              with timestamp, type and payload
  */
 
 const uint32_t magicByteConstant = 0x1631;
@@ -22,9 +35,9 @@ const uint32_t magicByteConstant = 0x1631;
 struct Header
 {
 	uint32_t magicByte;	// 0x31 16 00 00
-	uint32_t animationBlockSize; // the size (in bytes) of all animation blocks together 
+	uint32_t sizeOfAnimationBlocks; // the size (in bytes) of all animation blocks together 
 	uint32_t followingSequenceSize; // contains positions (with some auxiliary info) = probably camera tracks ?
-	uint32_t frameSequenceBlocks; // *108 to get size in bytes
+	uint32_t countOfObjectDefinitionBlocks; // *108 to get size in bytes
 	uint32_t unkCCSequence; // CC CC CC CC 
 	uint32_t unk3;
 	uint32_t unk4;
@@ -32,15 +45,14 @@ struct Header
 	uint32_t unk6;
     unsigned char padding[60];
     // Start of animation block
-    uint32_t countOfAnimations; // the number of animation blocks following header
+    uint32_t countOfAnimationBlocks; // the number of animation blocks following header
     uint32_t unknown;
 };
 
 /* 
  * \brief Contains animations 
  *
- * PROBABLY a way how to preload animations and usem them in the sequence of object state
- * transitions
+ * Each animation can be referenced in Transformation Stream (by ID) 
  */
 struct AnimationBlock
 {
@@ -72,21 +84,20 @@ struct TransformationHeader
     uint32_t type; // 1 or 2
 };
 
-// TODO-rename
-struct FollowingStructHeader
-{
-	uint32_t unkZero;
-	uint32_t unkTimestamp;
-	uint32_t unkTimestamp2; // increasing
-	uint32_t probablyType; // usually 1 or 2
-};
-
+/*
+ * \brief Most frequently used transformation payload
+ *
+ * For given timestamp, it contains world-space position + rotation of object  + animation
+ */
 struct TransformPayload
 {
-	float position[3];
-	float rotation[4]; // maybe rotation in angles
-        uint32_t auxiliary; // first 10 bits = animation ID
+	float position[3]; // world space
+	float rotation[4]; // rotation quat
+        uint32_t auxiliary; // first 10 bits = animation ID + bitmap with flags (must have 0x400 to animate)
+        uint32_t offset; // last 0xFFF goes for animation frame offset (ahead)
+
         size_t getAnimationID() { return this->auxiliary & 0x3FF; }
+        size_t getAnimationOffset() { return this->offset & 0xFFF; }
 };
 
 #pragma pack(pop)
@@ -110,7 +121,7 @@ class Loader
 	void readAnimations(std::ifstream& stream)
 	{
 		std::cerr << "AnimationStart" << std::endl;
-		for(size_t i = 0; i < fileHeader.countOfAnimations; i++)
+		for(size_t i = 0; i < fileHeader.countOfAnimationBlocks; i++)
 		{
 			AnimationBlock animationBlock;
 			memset(&animationBlock,0,52);
@@ -123,7 +134,7 @@ class Loader
 	void readFrameSequences(std::ifstream& stream)
 	{
 		std::cerr << "FrameSequence" << std::endl;
-		for(size_t i = 0; i < fileHeader.frameSequenceBlocks; i++)
+		for(size_t i = 0; i < fileHeader.countOfObjectDefinitionBlocks; i++)
 		{
 			AnimatedObjectDefinitions postanimationBlock;
 			memset(&postanimationBlock,0,108);
@@ -145,10 +156,11 @@ class Loader
             size_t endPointer= 0;
             size_t currentPointer = 0;
             // for each animated object 
-            for(size_t i = 0; i < fileHeader.frameSequenceBlocks; i++)
+            for(size_t i = 0; i < fileHeader.countOfObjectDefinitionBlocks; i++)
             {
-                std::cerr << "Reading object: " << i << std::endl;
-                endPointer = currentPointer + currentFile.postanimationBlocks[i].sizeOfStreamSection;
+                auto& animatedObject = currentFile.postanimationBlocks[i];
+                std::cerr << "Reading object: " << animatedObject.actorName << "[ " << animatedObject.frameName << " ] [" << i << "]" << std::endl;
+                endPointer = currentPointer + animatedObject.sizeOfStreamSection;
                 uint32_t zeroUnkBlock;
                 // Skip leading 8 bytes
                 stream.READ(zeroUnkBlock);
@@ -165,7 +177,7 @@ class Loader
                     currentPointer += 8;
 
                     // get payload size (-8 is for header)
-                    size_t payloadLength = currentFile.postanimationBlocks[i].sizeOfBlocks[header.type]-8;
+                    size_t payloadLength = animatedObject.sizeOfBlocks[header.type]-8;
                     currentPointer += payloadLength;
                     // read payload
                     unsigned char payload[512];
@@ -174,47 +186,11 @@ class Loader
 
                     TransformPayload *body = reinterpret_cast<TransformPayload*>(&payload);
                     std::cerr << "[TransformSequence] Transform payload ["<< body->position[0] << "," << body->position[1] << "," << body->position[2] << "] ["
-                    << body->rotation[0] << "," << body->rotation[1] << "," << body->rotation[2] << "," << body->rotation[3] << "] AnimID: " << body->getAnimationID() << " " << std::hex << body->auxiliary << "\n";
+                    << body->rotation[0] << "," << body->rotation[1] << "," << body->rotation[2] << "," << body->rotation[3] << "] AnimID: " << body->getAnimationID() << " Offset:" << body->getAnimationOffset() << " - "<< std::hex << body->auxiliary << "\n";
                 }
 
                 
             }
-            /*
-		std::cerr << "TransformSequence" << std::endl;
-		uint32_t startunk1;
-		uint32_t startunk2;
-		stream.READ(startunk1);
-		stream.READ(startunk2);
-		for(size_t i = 8; i < fileHeader.followingSequenceSize; )
-		{
-			uint32_t unkWhatever;
-			uint32_t type;
-			stream.READ(unkWhatever);
-			stream.READ(type);
-
-			if(type == 0)
-			{
-				float unk7;
-				stream.READ(unk7);
-				stream.READ(type);
-			}
-			FollowingStructTransform body;
-			stream.READ(body);
-			float unk6;
-			stream.READ(unk6);
-			i += 40;
-			if(type == 2)
-			{
-				float unk;
-				stream.READ(unk);
-				i += 4;
-			}
-			//currentFile.postanimationBlocks.push_back(postanimationBlock);
-			std::cerr << "[TransformSequence] Whatever: " << std::hex << unkWhatever << " Position: " << std::hex << i << std::dec << "\t Type: " << type << " ["<< body.position[0] << "," << body.position[1] << "," << body.position[2] << "] ["
-				<< body.rotation[0] << "," << body.rotation[1] << "," << body.rotation[2] << "," << body.rotation[3] << "]\n";
-		}
-                */
-
 	}
 
     
@@ -228,8 +204,8 @@ class Loader
 		{
 			inputFile.READ(fileHeader);
 			std::cout << "Magic Byte: " << std::hex << fileHeader.magicByte << std::dec << std::endl;
-			std::cout << "Anim block size: " << fileHeader.animationBlockSize << std::endl;
-			std::cout << "Count of anims: " << fileHeader.countOfAnimations<< std::endl;
+			std::cout << "Anim block size: " << fileHeader.sizeOfAnimationBlocks << std::endl;
+			std::cout << "Count of anims: " << fileHeader.countOfAnimationBlocks<< std::endl;
 			if(fileHeader.magicByte != magicByteConstant)
 			{
 				std::cerr << "[Err] Invalid magic byte ...\n" << std::endl;
