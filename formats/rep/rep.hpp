@@ -81,10 +81,12 @@ struct FollowingStructHeader
 	uint32_t probablyType; // usually 1 or 2
 };
 
-struct FollowingStructTransform
+struct TransformPayload
 {
 	float position[3];
 	float rotation[4]; // maybe rotation in angles
+        uint32_t auxiliary; // first 10 bits = animation ID
+        size_t getAnimationID() { return this->auxiliary & 0x3FF; }
 };
 
 #pragma pack(pop)
@@ -168,7 +170,11 @@ class Loader
                     // read payload
                     unsigned char payload[512];
                     stream.read(reinterpret_cast<char*>(&payload), payloadLength);
-                    std::cerr << "[TransformSequence] Type: " << header.type << " Read chunk with size: " << payloadLength << std::endl;
+                    std::cerr << "[TransformSequence] Timestamp: " << std::hex << header.timestamp << std::dec << " Type: " << header.type << " Read chunk with size: " << payloadLength << std::endl;
+
+                    TransformPayload *body = reinterpret_cast<TransformPayload*>(&payload);
+                    std::cerr << "[TransformSequence] Transform payload ["<< body->position[0] << "," << body->position[1] << "," << body->position[2] << "] ["
+                    << body->rotation[0] << "," << body->rotation[1] << "," << body->rotation[2] << "," << body->rotation[3] << "] AnimID: " << body->getAnimationID() << " " << std::hex << body->auxiliary << "\n";
                 }
 
                 
