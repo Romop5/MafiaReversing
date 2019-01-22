@@ -39,8 +39,8 @@ struct Header
 	uint32_t followingSequenceSize; // contains positions (with some auxiliary info) = probably camera tracks ?
 	uint32_t countOfObjectDefinitionBlocks; // *108 to get size in bytes
 	uint32_t unkCCSequence; // CC CC CC CC 
-	uint32_t unk3;
-	uint32_t unk4;
+	uint32_t countOfCameraChunks; // each chunk has 64 bytes
+	uint32_t countOfAfterCameraChunks; // each chunk has 7 bytes
 	uint32_t unk5;
 	uint32_t unk6;
     unsigned char padding[60];
@@ -98,6 +98,20 @@ struct TransformPayload
 
         size_t getAnimationID() { return this->auxiliary & 0x3FF; }
         size_t getAnimationOffset() { return this->offset & 0xFFF; }
+};
+
+
+struct AnimationChunk
+{
+        uint32_t timestamp;
+        uint32_t unk1;
+        uint32_t type;
+        float position[3];
+        float unkVector[3];
+        float unkVectorSecond[3];
+        uint32_t unk2;
+        float fov;
+        uint32_t unk3[2];
 };
 
 #pragma pack(pop)
@@ -186,12 +200,27 @@ class Loader
 
                     TransformPayload *body = reinterpret_cast<TransformPayload*>(&payload);
                     std::cerr << "[TransformSequence] Transform payload ["<< body->position[0] << "," << body->position[1] << "," << body->position[2] << "] ["
-                    << body->rotation[0] << "," << body->rotation[1] << "," << body->rotation[2] << "," << body->rotation[3] << "] AnimID: " << body->getAnimationID() << " Offset:" << body->getAnimationOffset() << " - "<< std::hex << body->auxiliary << "\n";
+                    << body->rotation[0] << "," << body->rotation[1] << "," << body->rotation[2] << "," << body->rotation[3] << "] AnimID: " << body->getAnimationID() << " Offset:" << body->getAnimationOffset() << " - "<< std::hex << body->auxiliary << std::dec << "\n";
                 }
 
                 
             }
 	}
+
+	void readCameraSection(std::ifstream& stream)
+	{
+            for(size_t i = 0; i < fileHeader.countOfAnimationBlocks; i++)
+            {
+                    AnimationChunk chunk;
+                    stream.READ(chunk);
+                    std::cerr << "Camera Section: Time: " << chunk.timestamp << " Type: " << chunk.type << " [" << chunk.position[0] << ", " << chunk.position[1] << ", " << chunk.position[2] << "]" << " FOV: " << chunk.fov;
+                    std::cerr << " [" << chunk.unkVector[0] << ", " << chunk.unkVector[1] << ", " << chunk.unkVector[2] << "]" <<  " - " ;
+                    std::cerr << " [" << chunk.unkVectorSecond[0] << ", " << chunk.unkVectorSecond[1] << ", " << chunk.unkVectorSecond[2] << "]" <<  std::endl;
+                
+            }
+	}
+
+
 
     
     public:
@@ -215,6 +244,7 @@ class Loader
 			readAnimations(inputFile);
 			readFrameSequences(inputFile);
 			readTransformation(inputFile);
+                        readCameraSection(inputFile);
 		} else {
 			std::cerr << "[Err] Failed to open file " << fileName  << std::endl;
 		}
