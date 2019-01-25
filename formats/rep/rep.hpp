@@ -40,10 +40,10 @@ struct Header
 	uint32_t countOfObjectDefinitionBlocks; // *108 to get size in bytes
 	uint32_t unkCCSequence; // CC CC CC CC 
 	uint32_t countOfCameraChunks; // each chunk has 64 bytes
-	uint32_t countOfAfterCameraChunks; // each chunk has 7 bytes
-	uint32_t unk5;
-	uint32_t unk6;
-    unsigned char padding[60];
+	uint32_t countOfCameraFocusChunks; // each chunk has 56 bytes
+	uint32_t lengthOfScriptEventsSequence; // together with sounds
+	uint32_t lengthOfLastSection; // unknown at the moment
+    unsigned char padding[60]; // 00s
     // Start of animation block
     uint32_t countOfAnimationBlocks; // the number of animation blocks following header
     uint32_t unknown;
@@ -114,6 +114,39 @@ struct AnimationChunk
         uint32_t unk3[2];
 };
 
+struct CameraFocusChunk
+{
+        uint32_t timestamp;
+        uint32_t timestamp2;
+        uint32_t type;
+        float position[3];
+        float unkVector[3];
+        float unkVectorSecond[3];
+        uint32_t unk1;
+        uint32_t unk2;
+};
+
+struct ScriptsHeader
+{
+        uint32_t unk;
+        uint32_t sizeOfFollowingData;
+        uint32_t offsetOfDifferentData;
+        uint32_t offsetOfMusicData;
+};
+
+struct ScriptChunk
+{
+    uint32_t timestamp;
+    char scriptName[36];
+};
+
+struct SoundChunk
+{
+    uint32_t timestamp;
+    uint32_t type; // 0 = start, 1 = end
+    char soundName[32];
+};
+
 #pragma pack(pop)
 
 class File
@@ -125,6 +158,7 @@ class File
 };
 
 
+#define GETPOS(stream) { std::cerr << "Stream position at: " << std::hex << stream.tellg() << std::dec << std::endl;}
 #define READ(var) read(reinterpret_cast<char*>(&var), sizeof(var)/sizeof(char))
 class Loader
 {
@@ -209,7 +243,7 @@ class Loader
 
 	void readCameraSection(std::ifstream& stream)
 	{
-            for(size_t i = 0; i < fileHeader.countOfAnimationBlocks; i++)
+            for(size_t i = 0; i < fileHeader.countOfCameraChunks; i++)
             {
                     AnimationChunk chunk;
                     stream.READ(chunk);
@@ -218,7 +252,70 @@ class Loader
                     std::cerr << " [" << chunk.unkVectorSecond[0] << ", " << chunk.unkVectorSecond[1] << ", " << chunk.unkVectorSecond[2] << "]" <<  std::endl;
                 
             }
-	}
+
+            GETPOS(stream);
+            for(size_t i = 0; i < fileHeader.countOfCameraFocusChunks; i++)
+            {
+                    CameraFocusChunk chunk;
+                    stream.READ(chunk);
+                    std::cerr << "Camera Focus: Time: " << chunk.timestamp << " Type: " << chunk.type << " [" << chunk.position[0] << ", " << chunk.position[1] << ", " << chunk.position[2] << "]";
+                    std::cerr << " [" << chunk.unkVector[0] << ", " << chunk.unkVector[1] << ", " << chunk.unkVector[2] << "]" <<  " - ";
+                    std::cerr << " [" << chunk.unkVectorSecond[0] << ", " << chunk.unkVectorSecond[1] << ", " << chunk.unkVectorSecond[2] << "]" <<  std::endl;
+            }
+        }
+
+	void readScriptEvents(std::ifstream& stream)
+	{
+            ScriptsHeader header;
+            stream.READ(header);
+
+            stream.seekg(header.sizeOfFollowingData, std::ifstream::cur);
+
+            uint32_t countOFFirstSection = header.offsetOfDifferentData / 40;
+            uint32_t countOFSecondSection = header.offsetOfMusicData / 40;
+            for(size_t i = 0; i < countOFFirstSection; i++)
+            {
+                    ScriptChunk chunk;
+                    stream.READ(chunk);
+                    std::cerr << "Script chunk: " << chunk.timestamp << " Name: " << chunk.scriptName << std::endl;               
+            }
+
+            for(size_t i = 0; i < countOFSecondSection; i++)
+            {
+                    SoundChunk chunk;
+                    stream.READ(chunk);
+                    std::cerr << "Sound chunk: " << chunk.timestamp << " Type: " << chunk.type << " Name: " << chunk.soundName << std::endl;               
+            }
+
+        }
+
+
+	void readScriptEvents(std::ifstream& stream)
+	{
+            ScriptsHeader header;
+            stream.READ(header);
+
+            stream.seekg(header.sizeOfFollowingData, std::ifstream::cur);
+
+            uint32_t countOFFirstSection = header.offsetOfDifferentData / 40;
+            uint32_t countOFSecondSection = header.offsetOfMusicData / 40;
+            for(size_t i = 0; i < countOFFirstSection; i++)
+            {
+                    ScriptChunk chunk;
+                    stream.READ(chunk);
+                    std::cerr << "Script chunk: " << chunk.timestamp << " Name: " << chunk.scriptName << std::endl;               
+            }
+
+            for(size_t i = 0; i < countOFSecondSection; i++)
+            {
+                    SoundChunk chunk;
+                    stream.READ(chunk);
+                    std::cerr << "Sound chunk: " << chunk.timestamp << " Type: " << chunk.type << " Name: " << chunk.soundName << std::endl;               
+            }
+
+        }
+
+
 
 
 
@@ -245,6 +342,7 @@ class Loader
 			readFrameSequences(inputFile);
 			readTransformation(inputFile);
                         readCameraSection(inputFile);
+                        readScriptEvents(inputFile);
 		} else {
 			std::cerr << "[Err] Failed to open file " << fileName  << std::endl;
 		}
