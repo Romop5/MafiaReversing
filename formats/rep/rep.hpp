@@ -35,14 +35,14 @@ const uint32_t magicByteConstant = 0x1631;
 struct Header
 {
 	uint32_t magicByte;	// 0x31 16 00 00
-	uint32_t sizeOfAnimationBlocks; // the size (in bytes) of all animation blocks together 
-	uint32_t followingSequenceSize; // contains positions (with some auxiliary info) = probably camera tracks ?
+	uint32_t sizeOfAnimationSection; // the size (in bytes) of all animation blocks together 
+	uint32_t sizeOfObjectDefinitionsSection; // contains positions (with some auxiliary info) = probably camera tracks ?
 	uint32_t countOfObjectDefinitionBlocks; // *108 to get size in bytes
-	uint32_t unkCCSequence; // CC CC CC CC 
+	uint32_t fixedCCSequence; // CC CC CC CC 
 	uint32_t countOfCameraChunks; // each chunk has 64 bytes
 	uint32_t countOfCameraFocusChunks; // each chunk has 56 bytes
-	uint32_t lengthOfScriptEventsSequence; // together with sounds
-	uint32_t lengthOfLastSection; // unknown at the moment
+	uint32_t sizeOfScriptEventsSequence; // together with sounds
+	uint32_t sizeOfDialogSection; // unknown at the moment
     unsigned char padding[60]; // 00s
     // Start of animation block
     uint32_t countOfAnimationBlocks; // the number of animation blocks following header
@@ -126,12 +126,12 @@ struct CameraFocusChunk
         uint32_t unk2;
 };
 
-struct ScriptsHeader
+struct ScriptsAndSoundsHeader
 {
         uint32_t unk;
-        uint32_t sizeOfFollowingData;
-        uint32_t offsetOfDifferentData;
-        uint32_t offsetOfMusicData;
+        uint32_t sizeOfFollowingData; // unk, TODO
+        uint32_t sizeOfScriptSection;
+        uint32_t sizeOfSoundSection;
 };
 
 struct ScriptChunk
@@ -145,6 +145,21 @@ struct SoundChunk
     uint32_t timestamp;
     uint32_t type; // 0 = start, 1 = end
     char soundName[32];
+};
+
+struct DialogHeader
+{
+    uint32_t countOfDialogs;
+    uint32_t unk;
+    uint32_t unk2;
+};
+
+struct DialogChunk
+{
+    uint32_t timestamp;
+    uint32_t channelID;
+    uint32_t dialogID; // 0 = unk, 1 = bind frame to dialog, FFFFFFFF unk, rest = dialogID which can be found in sounds/
+    char framename[24];
 };
 
 #pragma pack(pop)
@@ -266,13 +281,13 @@ class Loader
 
 	void readScriptEvents(std::ifstream& stream)
 	{
-            ScriptsHeader header;
+            ScriptsAndSoundsHeader header;
             stream.READ(header);
 
             stream.seekg(header.sizeOfFollowingData, std::ifstream::cur);
 
-            uint32_t countOFFirstSection = header.offsetOfDifferentData / 40;
-            uint32_t countOFSecondSection = header.offsetOfMusicData / 40;
+            uint32_t countOFFirstSection = header.sizeOfScriptSection / 40;
+            uint32_t countOFSecondSection = header.sizeOfSoundSection / 40;
             for(size_t i = 0; i < countOFFirstSection; i++)
             {
                     ScriptChunk chunk;
@@ -289,32 +304,19 @@ class Loader
 
         }
 
-
-	void readScriptEvents(std::ifstream& stream)
+	void readDialogs(std::ifstream& stream)
 	{
-            ScriptsHeader header;
+            DialogHeader header;
             stream.READ(header);
 
-            stream.seekg(header.sizeOfFollowingData, std::ifstream::cur);
-
-            uint32_t countOFFirstSection = header.offsetOfDifferentData / 40;
-            uint32_t countOFSecondSection = header.offsetOfMusicData / 40;
-            for(size_t i = 0; i < countOFFirstSection; i++)
+            for(size_t i = 0; i < header.countOfDialogs; i++)
             {
-                    ScriptChunk chunk;
+                    DialogChunk chunk;
                     stream.READ(chunk);
-                    std::cerr << "Script chunk: " << chunk.timestamp << " Name: " << chunk.scriptName << std::endl;               
-            }
-
-            for(size_t i = 0; i < countOFSecondSection; i++)
-            {
-                    SoundChunk chunk;
-                    stream.READ(chunk);
-                    std::cerr << "Sound chunk: " << chunk.timestamp << " Type: " << chunk.type << " Name: " << chunk.soundName << std::endl;               
+                    std::cerr << "Dialog chunk: stamp: " << chunk.timestamp << " ID: " << chunk.channelID << " animation ID: " << std::hex << chunk.dialogID << std::dec << " Name: " << chunk.framename << std::endl;               
             }
 
         }
-
 
 
 
@@ -330,7 +332,7 @@ class Loader
 		{
 			inputFile.READ(fileHeader);
 			std::cout << "Magic Byte: " << std::hex << fileHeader.magicByte << std::dec << std::endl;
-			std::cout << "Anim block size: " << fileHeader.sizeOfAnimationBlocks << std::endl;
+			std::cout << "Anim block size: " << fileHeader.sizeOfAnimationSection << std::endl;
 			std::cout << "Count of anims: " << fileHeader.countOfAnimationBlocks<< std::endl;
 			if(fileHeader.magicByte != magicByteConstant)
 			{
@@ -343,6 +345,7 @@ class Loader
 			readTransformation(inputFile);
                         readCameraSection(inputFile);
                         readScriptEvents(inputFile);
+                        readDialogs(inputFile);
 		} else {
 			std::cerr << "[Err] Failed to open file " << fileName  << std::endl;
 		}
