@@ -62,6 +62,14 @@ struct AnimationBlock
     char animationName[48];
 };
 
+enum AnimatedObjectDefinitionType : uint32_t
+{
+    OBJECT_FRAME = 1,
+    OBJECT_HUMAN = 2,
+    OBJECT_CAR = 4,
+    OBJECT_MUZZLE = 21
+};
+
 /*
  * \brief Describes animated objects
  *
@@ -75,8 +83,9 @@ struct AnimatedObjectDefinitions
     char frameName[36];
     char actorName[36];
     uint32_t sizeOfBlocks[4];   // size of different blocks
-    uint32_t unk[2]; // first DWORd seems to always be set to zero, second is bitmap / again type ?
-    uint32_t type; // 2 = human (actor), 1 = frame, 4 = car, 21 = muzzle ?
+    uint32_t activationTime; // at least I guessed so, all objects has this field set to 0
+    uint32_t deactivationTime; // verified, after deactivationTime the object gonna stuck (till the end of cutscene)
+    AnimatedObjectDefinitionType type; // 2 = human (actor), 1 = frame, 4 = car, 21 = muzzle ?
     uint32_t sizeOfStreamSection; // size of all blocks for this object together
     uint32_t positionOfTheBeginning;  // the offset since the start of transformation section at which the ObjectDefinition block starts (and last for sizeOfStreamSection bytes)
 };
@@ -96,7 +105,7 @@ struct TransformPayload
 {
 	float position[3]; // world space
 	float rotation[4]; // rotation quat
-        uint32_t auxiliary; // first 10 bits = animation ID + bitmap with flags (must have 0x400 to animate)
+        uint32_t auxiliary; // first 10 bits = animation ID + bitmap with flags (must have 0x400 to animate) // TODO
         uint32_t offset; // last 0xFFF goes for animation frame offset (ahead)
 
         size_t getAnimationID() { return this->auxiliary & 0x3FF; }
@@ -212,12 +221,9 @@ class Loader
                         {
                             std::cerr << std::setw(6) << postanimationBlock.sizeOfBlocks[i] << " ";
                         }
-                        std::cerr << "[Unk] ";
-                        for(int i = 0; i < 2; i++)
-                        {
-                            std::cerr << std::setw(6) << std::hex << postanimationBlock.unk[i] << std::dec << " ";
-                        }
 
+                        std::cerr << "Time: " << std::setw(6) << std::hex << postanimationBlock.activationTime << std::dec << " ";
+                        std::cerr << std::setw(6) << std::hex << postanimationBlock.deactivationTime << std::dec << " ";
                         std::cerr << " Type: " << std::hex << postanimationBlock.type << std::dec;
                         std::cerr << std::endl;
 		}
