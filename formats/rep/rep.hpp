@@ -8,6 +8,7 @@
 #include <string>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <vector>
 
 namespace RepFile
@@ -46,7 +47,8 @@ struct Header
     unsigned char padding[60]; // 00s
     // Start of animation block
     uint32_t countOfAnimationBlocks; // the number of animation blocks following header
-    uint32_t unknown;
+    uint32_t AlwaysContainsOne; // usually set to 00 01 00 00
+
 };
 
 /* 
@@ -73,9 +75,10 @@ struct AnimatedObjectDefinitions
     char frameName[36];
     char actorName[36];
     uint32_t sizeOfBlocks[4];   // size of different blocks
-    unsigned char unk[12];
+    uint32_t unk[2]; // first DWORd seems to always be set to zero, second is bitmap / again type ?
+    uint32_t type; // 2 = human (actor), 1 = frame, 4 = car, 21 = muzzle ?
     uint32_t sizeOfStreamSection; // size of all blocks for this object together
-    uint32_t unk2;
+    uint32_t positionOfTheBeginning;  // the offset since the start of transformation section at which the ObjectDefinition block starts (and last for sizeOfStreamSection bytes)
 };
 
 struct TransformationHeader
@@ -203,12 +206,19 @@ class Loader
 			memset(&postanimationBlock,0,108);
 			stream.READ(postanimationBlock);
 			currentFile.postanimationBlocks.push_back(postanimationBlock);
-			std::cerr << "[FrameSequence Block] " << postanimationBlock.frameName << " - " << postanimationBlock.actorName<< " - " << std::hex << postanimationBlock.sizeOfStreamSection << std::dec << std::endl;
+			std::cerr << "[FrameSequence Block] " << postanimationBlock.frameName << " - " << postanimationBlock.actorName<< " - Size: " << std::hex << postanimationBlock.sizeOfStreamSection << "Start: " << postanimationBlock.positionOfTheBeginning << std::dec << std::endl;
                         std::cerr << "[FS] ";
                         for(int i = 0; i < 4; i++)
                         {
-                            std::cerr << postanimationBlock.sizeOfBlocks[i] << " ";
+                            std::cerr << std::setw(6) << postanimationBlock.sizeOfBlocks[i] << " ";
                         }
+                        std::cerr << "[Unk] ";
+                        for(int i = 0; i < 2; i++)
+                        {
+                            std::cerr << std::setw(6) << std::hex << postanimationBlock.unk[i] << std::dec << " ";
+                        }
+
+                        std::cerr << " Type: " << std::hex << postanimationBlock.type << std::dec;
                         std::cerr << std::endl;
 		}
 
