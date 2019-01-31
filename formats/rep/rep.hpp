@@ -93,7 +93,9 @@ enum AnimatedObjectDefinitionType : uint32_t
   OBJECT_FRAME = 1,
   OBJECT_HUMAN = 2,
   OBJECT_CAR = 4,
-  OBJECT_MUZZLE = 21
+  OBJECT_BOX = 9, // pickable object ?
+  OBJECT_EFFECT =
+    21 // usually stands for muzzle / cigarrette => particle effect
 };
 
 /*
@@ -115,8 +117,8 @@ struct AnimatedObjectDefinitions
                             // set to 0
   uint32_t deactivationTime; // verified, after deactivationTime the object
                              // gonna stuck (till the end of cutscene)
-  AnimatedObjectDefinitionType
-    type; // 2 = human (actor), 1 = frame, 4 = car, 21 = muzzle ?
+  AnimatedObjectDefinitionType type; // 2 = human (actor), 1 = frame, 4 = car, 6
+                                     // = unk, 9 = box, 21 = particle effect?
   uint32_t sizeOfStreamSection; // size of all blocks for this object, stored in
                                 // TransformationStream, together
   uint32_t
@@ -133,8 +135,8 @@ struct AnimatedObjectDefinitions
         return "OBJECT_HUMAN";
       case OBJECT_CAR:
         return "OBJECT_CAR";
-      case OBJECT_MUZZLE:
-        return "OBJECT_MUZZLE";
+      case OBJECT_EFFECT:
+        return "OBJECT_EFFECT";
       default:
         return "OBJECT_UNKNOWN";
     }
@@ -164,7 +166,8 @@ struct TransformPayload
   float rotation[4];  // rotation quat
   uint32_t auxiliary; // first 10 bits = animation ID + bitmap with flags (must
                       // have 0x400 to animate) // TODO
-  uint32_t animationStartOffset;    // last 0xFFF goes for animation frame offset (ahead)
+  uint32_t
+    animationStartOffset; // last 0xFFF goes for animation frame offset (ahead)
 
   size_t getAnimationID() { return this->auxiliary & 0x3FF; }
   size_t getAnimationOffset() { return this->animationStartOffset & 0xFFF; }
@@ -422,6 +425,7 @@ private:
 
   void readScriptEvents(std::ifstream& stream)
   {
+    GETPOS(stream);
     ScriptsAndSoundsHeader header;
     stream.READ(header);
 
@@ -449,6 +453,7 @@ private:
   {
     DialogHeader header;
     stream.READ(header);
+    std::cerr << "Count of dialog chunks: " << header.countOfDialogs << std::endl;
 
     for (size_t i = 0; i < header.countOfDialogs; i++) {
       DialogChunk chunk;
@@ -464,6 +469,7 @@ public:
   File loadFile(std::string fileName)
   {
 
+    std::cerr << "[RepParser] Parsing file: " << fileName << std::endl;
     std::ifstream inputFile;
     inputFile.open(fileName, std::ifstream::binary);
     if (inputFile.is_open()) {
