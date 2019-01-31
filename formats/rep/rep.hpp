@@ -11,6 +11,18 @@
 #include <iomanip>
 #include <vector>
 
+/* \brief Stores cutscene directives
+ *
+ * .rep files contains directives for performing cutscenes. 
+ * Each object which is going to be animated is defined here, 
+ * and subsequently described by sequence of timed transformations chunks.
+ *
+ * Morever, camera has separeted stream of transformations which additionally contains
+ * positions at which the camera looks at during the cutscene.
+ *
+ * Eventually, a stream of dialog speeches is stored in a single stream for each human speaking during the cutscene.
+ *
+ */
 namespace RepFile
 {
 
@@ -35,15 +47,15 @@ const uint32_t magicByteConstant = 0x1631;
 #pragma pack(push,1)
 struct Header
 {
-	uint32_t magicByte;	// 0x31 16 00 00
+	uint32_t magicByte;	// 0x31 16 00 00 - determines .rep file
 	uint32_t sizeOfAnimationSection; // the size (in bytes) of all animation blocks together 
 	uint32_t sizeOfObjectDefinitionsSection; // contains positions (with some auxiliary info) = probably camera tracks ?
 	uint32_t countOfObjectDefinitionBlocks; // *108 to get size in bytes
-	uint32_t fixedCCSequence; // CC CC CC CC 
+	uint32_t fixedCCSequence; // always contains 0xCC CC CC CC 
 	uint32_t countOfCameraChunks; // each chunk has 64 bytes
 	uint32_t countOfCameraFocusChunks; // each chunk has 56 bytes
-	uint32_t sizeOfScriptEventsSequence; // together with sounds
-	uint32_t sizeOfDialogSection; // unknown at the moment
+	uint32_t sizeOfScriptEventsSequence; // together with sounds events
+	uint32_t sizeOfDialogSection; // together with DialogHeader + some unknown block
     unsigned char padding[60]; // 00s
     // Start of animation block
     uint32_t countOfAnimationBlocks; // the number of animation blocks following header
@@ -52,16 +64,22 @@ struct Header
 };
 
 /* 
- * \brief Contains animations 
+ * \brief Contains animation used during cutscene
  *
- * Each animation can be referenced in Transformation Stream (by ID) 
+ * Each animation can be referenced in Transformation Stream (by animationID) 
  */
 struct AnimationBlock
 {
-    uint32_t animationID;
-    char animationName[48];
+    uint32_t animationID;   // actually, only lower 10bits are used in transformation stream
+    char animationName[48]; // NULL-terminated name of animation (ending with .i3d)
 };
 
+/*
+ * \brief Type of animated object
+ *
+ * Type determines how the object is handled during cutscenes. Only some of objects can have dialog
+ * animation applied on.
+ */
 enum AnimatedObjectDefinitionType : uint32_t
 {
     OBJECT_FRAME = 1,
@@ -80,20 +98,40 @@ enum AnimatedObjectDefinitionType : uint32_t
  */
 struct AnimatedObjectDefinitions 
 {
-    char frameName[36];
-    char actorName[36];
-    uint32_t sizeOfBlocks[4];   // size of different blocks
+    char frameName[36]; // frame name as defined in scene file
+    char actorName[36]; // actor named, which is used for referencing in MafiaScripts
+    uint32_t sizeOfBlocks[4];   // size of chunks which store different transformation data in Transformation Section
     uint32_t activationTime; // at least I guessed so, all objects has this field set to 0
     uint32_t deactivationTime; // verified, after deactivationTime the object gonna stuck (till the end of cutscene)
     AnimatedObjectDefinitionType type; // 2 = human (actor), 1 = frame, 4 = car, 21 = muzzle ?
-    uint32_t sizeOfStreamSection; // size of all blocks for this object together
+    uint32_t sizeOfStreamSection; // size of all blocks for this object, stored in TransformationStream, together
     uint32_t positionOfTheBeginning;  // the offset since the start of transformation section at which the ObjectDefinition block starts (and last for sizeOfStreamSection bytes)
+
+    std::string getTypeString() const {
+        switch(this->type)
+        {
+            case OBJECT_FRAME:
+                return "OBJECT_FRAME";
+            case OBJECT_HUMAN:
+                return "OBJECT_HUMAN";
+            case OBJECT_CAR:
+                return "OBJECT_CAR";
+            case OBJECT_MUZZLE:
+                return "OBJECT_MUZZLE";
+            default:
+                return "OBJECT_UNKNOWN";
+        }
+    };
 };
 
+/* \brief Determines type of the following transformation chunk
+ *
+ * Each chunk starts with this header.
+ */
 struct TransformationHeader
 {
     uint32_t timestamp; // the beggining of transformation
-    uint32_t type; // 1 or 2
+    uint32_t type; // chunk type, 1, 2, 3, the size of chunk can be determined in sizeOfBlocks and type as index into the array
 };
 
 /*
@@ -113,52 +151,86 @@ struct TransformPayload
 };
 
 
-struct AnimationChunk
+/* \brief Describes camera position, rotation and FOV
+ */
+struct CameraTransformationChunk
 {
         uint32_t timestamp;
         uint32_t unk1;
-        uint32_t type;
-        float position[3];
-        float unkVector[3];
+        uint32_t type;  // GUESS: probably defines how the position is interpolated
+        float position[3];  // position which the camera is placed at
+        float unkVector[3]; // somehow controls how much the camera "hangs" from side to side during the movement
         float unkVectorSecond[3];
         uint32_t unk2;
-        float fov;
+        float fov;  // field of view - camera perspective angle
         uint32_t unk3[2];
 };
 
+/* \brief Describes where the camera looks at
+ *
+ */
 struct CameraFocusChunk
 {
         uint32_t timestamp;
         uint32_t timestamp2;
         uint32_t type;
-        float position[3];
+        float position[3];      // determines the position at which the camera is focused at
         float unkVector[3];
         float unkVectorSecond[3];
         uint32_t unk1;
         uint32_t unk2;
 };
 
+
 struct ScriptsAndSoundsHeader
 {
         uint32_t unk;
-        uint32_t sizeOfFollowingData; // unk, TODO
-        uint32_t sizeOfScriptSection;
-        uint32_t sizeOfSoundSection;
+        uint32_t sizeOfFollowingData; // unk, skipped during parsing, TODO
+        uint32_t sizeOfScriptSection; // size of all ScriptChunk together
+        uint32_t sizeOfSoundSection; // size of all SoundChunk together
 };
 
+/* \brief Determines the script which is called at specified time during the cutscene
+ *
+ * Note: scripts can be dynamically loaded into the scene using .diff files
+ */
 struct ScriptChunk
 {
     uint32_t timestamp;
     char scriptName[36];
 };
 
+enum SoundChunkType: uint32_t
+{
+    SOUND_START = 0,
+    SOUND_END= 1,
+};
+
+/* \brief Determines the name of sound frame which is (de)activated at given time
+ */
 struct SoundChunk
 {
     uint32_t timestamp;
-    uint32_t type; // 0 = start, 1 = end
+    SoundChunkType type; // 0 = start, 1 = end
     char soundName[32];
+
+    std::string getTypeStringRepresentation() const {
+        switch(this->type)
+        {
+            case SOUND_START:
+                return "SOUND_START";
+            case SOUND_END:
+                return "SOUND_END";
+            default:
+            return "UNKOWN SOUND TYPE";
+        }
+    }
 };
 
+/* \brief Defines the number of dialog chunks
+ *
+ * Note: occurs at the beginning of the dialog section
+ */
 struct DialogHeader
 {
     uint32_t countOfDialogs;
@@ -169,9 +241,9 @@ struct DialogHeader
 struct DialogChunk
 {
     uint32_t timestamp;
-    uint32_t channelID;
+    uint32_t channelID; // each channelID stands for different human giving speech
     uint32_t dialogID; // 0 = unk, 1 = bind frame to dialog, FFFFFFFF unk, rest = dialogID which can be found in sounds/
-    char framename[24];
+    char framename[24]; //identifies the human which speaks, contains 0 if dialogID is not 1
 };
 
 #pragma pack(pop)
@@ -180,7 +252,14 @@ class File
 {
 	public:
 	std::vector<AnimationBlock> animationBlocks;
-	std::vector<AnimatedObjectDefinitions> postanimationBlocks;
+	std::vector<AnimatedObjectDefinitions> animatedObjects;
+        // Transformation payload TODO
+	std::vector<CameraTransformationChunk> cameraPositionChunks;
+	std::vector<CameraFocusChunk> camerafocusChunks;
+	std::vector<ScriptChunk> scriptChunks;
+	std::vector<SoundChunk> soundChunks;
+	std::vector<DialogChunk> dialogChunks;
+	
 
 };
 
@@ -214,7 +293,7 @@ class Loader
 			AnimatedObjectDefinitions postanimationBlock;
 			memset(&postanimationBlock,0,108);
 			stream.READ(postanimationBlock);
-			currentFile.postanimationBlocks.push_back(postanimationBlock);
+			currentFile.animatedObjects.push_back(postanimationBlock);
 			std::cerr << "[FrameSequence Block] " << postanimationBlock.frameName << " - " << postanimationBlock.actorName<< " - Size: " << std::hex << postanimationBlock.sizeOfStreamSection << "Start: " << postanimationBlock.positionOfTheBeginning << std::dec << std::endl;
                         std::cerr << "[FS] ";
                         for(int i = 0; i < 4; i++)
@@ -224,7 +303,7 @@ class Loader
 
                         std::cerr << "Time: " << std::setw(6) << std::hex << postanimationBlock.activationTime << std::dec << " ";
                         std::cerr << std::setw(6) << std::hex << postanimationBlock.deactivationTime << std::dec << " ";
-                        std::cerr << " Type: " << std::hex << postanimationBlock.type << std::dec;
+                        std::cerr << " Type: " << postanimationBlock.getTypeString() << "[" << std::hex << postanimationBlock.type << "]"<< std::dec;
                         std::cerr << std::endl;
 		}
 
@@ -237,7 +316,7 @@ class Loader
             // for each animated object 
             for(size_t i = 0; i < fileHeader.countOfObjectDefinitionBlocks; i++)
             {
-                auto& animatedObject = currentFile.postanimationBlocks[i];
+                auto& animatedObject = currentFile.animatedObjects[i];
                 std::cerr << "Reading object: " << animatedObject.actorName << "[ " << animatedObject.frameName << " ] [" << i << "]" << std::endl;
                 endPointer = currentPointer + animatedObject.sizeOfStreamSection;
                 uint32_t zeroUnkBlock;
@@ -276,7 +355,7 @@ class Loader
 	{
             for(size_t i = 0; i < fileHeader.countOfCameraChunks; i++)
             {
-                    AnimationChunk chunk;
+                    CameraTransformationChunk chunk;
                     stream.READ(chunk);
                     std::cerr << "Camera Section: Time: " << chunk.timestamp << " Type: " << chunk.type << " [" << chunk.position[0] << ", " << chunk.position[1] << ", " << chunk.position[2] << "]" << " FOV: " << chunk.fov;
                     std::cerr << " [" << chunk.unkVector[0] << ", " << chunk.unkVector[1] << ", " << chunk.unkVector[2] << "]" <<  " - " ;
@@ -315,7 +394,7 @@ class Loader
             {
                     SoundChunk chunk;
                     stream.READ(chunk);
-                    std::cerr << "Sound chunk: " << chunk.timestamp << " Type: " << chunk.type << " Name: " << chunk.soundName << std::endl;               
+                    std::cerr << "Sound chunk: " << chunk.timestamp << " Type: " << chunk.getTypeStringRepresentation() << " ("<< chunk.type << ") Name: " << chunk.soundName << std::endl;               
             }
 
         }
