@@ -170,6 +170,8 @@ struct TransformPayload
     animationStartOffset; // last 0xFFF goes for animation frame offset (ahead)
 
   size_t getAnimationID() { return this->auxiliary & 0x3FF; }
+  bool hasAnimationID() { return this->auxiliary & 0x400; }
+  size_t getFlags() { return this->auxiliary >> 12; }
   size_t getAnimationOffset() { return this->animationStartOffset & 0xFFF; }
 };
 
@@ -314,7 +316,7 @@ public:
 
 #define GETPOS(stream)                                                         \
   {                                                                            \
-    std::cerr << "Stream position at: " << std::hex << stream.tellg()          \
+    std::cerr << "Stream position at: 0x" << std::hex << stream.tellg()          \
               << std::dec << std::endl;                                        \
   }
 #define READ(var)                                                              \
@@ -348,7 +350,7 @@ private:
       currentFile.animatedObjects.push_back(postanimationBlock);
       std::cerr << "[FrameSequence Block] " << postanimationBlock.frameName
                 << " - " << postanimationBlock.actorName
-                << " - Size: " << std::hex
+                << " - Size: 0x" << std::hex
                 << postanimationBlock.sizeOfStreamSection
                 << "Start: " << postanimationBlock.positionOfTheBeginning
                 << std::dec << std::endl;
@@ -373,6 +375,7 @@ private:
     size_t currentPointer = 0;
     // for each animated object
     for (size_t i = 0; i < fileHeader.countOfObjectDefinitionBlocks; i++) {
+      GETPOS(stream);
       auto& animatedObject = currentFile.animatedObjects[i];
       std::cerr << "Reading object: " << animatedObject.actorName << "[ "
                 << animatedObject.frameName << " ] [" << i << "]" << std::endl;
@@ -385,7 +388,7 @@ private:
 
       // for all blocks for current animated object
       while (endPointer > currentPointer) {
-        std::cerr << "Position: " << std::hex << currentPointer << std::dec
+        std::cerr << "Position: 0x" << std::hex << currentPointer << std::dec
                   << std::endl;
         // get header with timestamp / type
         TransformationHeader header;
@@ -398,9 +401,9 @@ private:
         // read payload
         unsigned char payload[512];
         stream.read(reinterpret_cast<char*>(&payload), payloadLength);
-        std::cerr << "[TransformSequence] Timestamp: " << std::hex
+        std::cerr << "[TransformSequence] Timestamp: 0x" << std::hex
                   << header.timestamp << std::dec << " Type: " << header.type
-                  << " Read chunk with size: " << payloadLength << std::endl;
+                  << " Read chunk with size(without header): " << payloadLength << std::endl;
 
         TransformPayload* body = reinterpret_cast<TransformPayload*>(&payload);
         std::cerr << "[TransformSequence] Transform payload ["
@@ -408,6 +411,7 @@ private:
                   << body->position[2] << "] [" << body->rotation[0] << ","
                   << body->rotation[1] << "," << body->rotation[2] << ","
                   << body->rotation[3] << "] AnimID: " << body->getAnimationID()
+                  << " Flags:" << std::hex << body->getFlags() << std::dec << " - "
                   << " Offset:" << body->getAnimationOffset() << " - "
                   << std::hex << body->auxiliary << std::dec << "\n";
       }
