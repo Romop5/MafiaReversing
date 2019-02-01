@@ -310,7 +310,7 @@ struct SoundChunk
 struct DialogHeader
 {
   uint32_t countOfDialogs;
-  uint32_t unk;
+  uint32_t countOfNarratorChunks;
   uint32_t unk2;
 };
 
@@ -323,6 +323,25 @@ struct DialogChunk
   char framename[24]; // identifies the human which speaks, contains 0 if
                       // dialogID is not 1
 };
+
+/* \brief Defines a background speech given at specific time
+ *
+ */
+struct NarratorChunk
+{
+  uint32_t timestamp; 
+  uint32_t unk2;      // probably duration ?
+  uint32_t speechID; 
+};
+
+struct UnkChunk
+{
+  uint32_t timestamp; 
+  uint32_t unk1;      
+  char frameName[32];
+  uint32_t unk2;
+};
+
 
 #pragma pack(pop)
 
@@ -527,17 +546,43 @@ private:
   {
     DialogHeader header;
     stream.READ(header);
-    std::cerr << "Count of dialog chunks: " << header.countOfDialogs << std::endl;
+    std::cerr << "[DialogSection] Count of dialog chunks: " << header.countOfDialogs << std::endl;
+    std::cerr << "[DialogSection] Unk: " << header.countOfNarratorChunks<< std::endl;
+    std::cerr << "[DialogSection] Unk2: " << header.unk2<< std::endl;
 
     for (size_t i = 0; i < header.countOfDialogs; i++) {
       DialogChunk chunk;
       stream.READ(chunk);
       std::cerr << "Dialog chunk: stamp: " << chunk.timestamp
                 << " ID: " << chunk.channelID << " animation ID: " << std::hex
-                << chunk.dialogID << std::dec << " Name: " << chunk.framename
-                << std::endl;
+                << chunk.dialogID << std::dec;
+                if(chunk.dialogID == 1)
+                    std::cerr << " Name: " << chunk.framename;
+                std::cerr << std::endl;
       currentFile.dialogChunks.push_back(chunk);
     }
+
+    for (size_t i = 0; i < header.countOfNarratorChunks; i++) {
+      NarratorChunk chunk;
+      stream.READ(chunk);
+      std::cerr << "Narrator chunk: timestamp: " << chunk.timestamp 
+                << " unk: " << chunk.unk2 
+                << " speechID: " << std::hex << chunk.speechID << std::dec
+                << std::endl;
+    }
+
+    for (size_t i = 0; i < header.unk2; i++) {
+      UnkChunk chunk;
+      stream.READ(chunk);
+      std::cerr << "Unk chunk: timestamp: " << chunk.timestamp 
+                << " unk: " << chunk.unk1 
+                << " frameName: " << chunk.frameName
+                << " unk: " << chunk.unk2 
+                << std::endl;
+    }
+
+
+
   }
 
 public:
