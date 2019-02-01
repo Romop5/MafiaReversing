@@ -207,7 +207,7 @@ struct CameraFocusChunk
 
 struct ScriptsAndSoundsHeader
 {
-  uint32_t unk;
+  uint32_t sizeOfPostheaderData; // post header data
   uint32_t sizeOfFollowingData; // unk, skipped during parsing, TODO
   uint32_t sizeOfScriptSection; // size of all ScriptChunk together
   uint32_t sizeOfSoundSection;  // size of all SoundChunk together
@@ -391,7 +391,10 @@ private:
   }
 
   void readCameraSection(std::ifstream& stream)
-  {
+  { 
+    GETPOS(stream);
+    std::cerr << "[Camera Section] Count of camera chunks: " << fileHeader.countOfCameraChunks << std::endl;
+    std::cerr << "[Camera Section] Count of camera focus chunks: " << fileHeader.countOfCameraFocusChunks << std::endl;
     for (size_t i = 0; i < fileHeader.countOfCameraChunks; i++) {
       CameraTransformationChunk chunk;
       stream.READ(chunk);
@@ -428,8 +431,10 @@ private:
     GETPOS(stream);
     ScriptsAndSoundsHeader header;
     stream.READ(header);
+    std::cerr << "[EventsHeader] Size of post header section: 0x" << std::hex << header.sizeOfPostheaderData << std::dec << std::endl;
+    std::cerr << "[EventsHeader] Size of following section: 0x" << std::hex << header.sizeOfFollowingData << std::dec << std::endl;
 
-    stream.seekg(header.sizeOfFollowingData, std::ifstream::cur);
+    stream.seekg(header.sizeOfFollowingData+header.sizeOfPostheaderData, std::ifstream::cur);
 
     uint32_t countOFFirstSection = header.sizeOfScriptSection / 40;
     uint32_t countOFSecondSection = header.sizeOfSoundSection / 40;
