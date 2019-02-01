@@ -154,6 +154,13 @@ struct TransformationHeader
                  // sizeOfBlocks and type as index into the array
 };
 
+
+enum TransformAnimationFlags : uint32_t
+{
+    ANIMATION_HAS_ID = 0x400,
+    ANIMATION_SHOULD_REPEAT = 0x2000,
+    ANIMATION_SHOULD_INTERPOLATE = 0x4000
+};
 /*
  * \brief Most frequently used transformation payload
  *
@@ -164,15 +171,34 @@ struct TransformPayload
 {
   float position[3];  // world space
   float rotation[4];  // rotation quat
-  uint32_t auxiliary; // first 10 bits = animation ID + bitmap with flags (must
+  uint32_t auxiliary; // first 10 bits = animation ID + the rest bits = bitmap with flags (must
                       // have 0x400 to animate) // TODO
   uint32_t
-    animationStartOffset; // last 0xFFF goes for animation frame offset (ahead)
+    animationStartOffset; // last 0xFFF goes for animation frame offset (ahead) * 40 to get time in miliseconds
 
   size_t getAnimationID() { return this->auxiliary & 0x3FF; }
-  bool hasAnimationID() { return this->auxiliary & 0x400; }
+  bool hasAnimationID() const { return this->auxiliary & ANIMATION_HAS_ID; }
+  bool shouldInterpolate() const { return this->auxiliary & ANIMATION_SHOULD_INTERPOLATE; }
+  bool shouldRepeat() const { return this->auxiliary & ANIMATION_SHOULD_REPEAT; }
+
   size_t getFlags() { return this->auxiliary >> 12; }
-  size_t getAnimationOffset() { return this->animationStartOffset & 0xFFF; }
+  std::string getFlagsAsString() const {
+      std::string flags;
+      if(shouldRepeat())
+      {
+        flags += "ANIMATION_SHOULD_REPEAT |";
+      }
+      if(shouldInterpolate())
+      {
+        flags += "ANIMATION_SHOULD_INTERPOLATE |";
+      }
+      if(hasAnimationID())
+      {
+        flags += "ANIMATION_HAS_ID |";
+      }
+      return flags;
+  };
+  size_t getAnimationOffset() { return this->animationStartOffset & 0xFFF; } 
 };
 
 /* \brief Describes camera position, rotation and FOV
@@ -412,6 +438,7 @@ private:
                   << body->rotation[1] << "," << body->rotation[2] << ","
                   << body->rotation[3] << "] AnimID: " << body->getAnimationID()
                   << " Flags:" << std::hex << body->getFlags() << std::dec << " - "
+                  << " Flags:" << body->getFlagsAsString() << " - "
                   << " Offset:" << body->getAnimationOffset() << " - "
                   << std::hex << body->auxiliary << std::dec << "\n";
       }
