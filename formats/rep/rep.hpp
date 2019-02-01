@@ -208,9 +208,32 @@ struct CameraFocusChunk
 struct ScriptsAndSoundsHeader
 {
   uint32_t sizeOfPostheaderData; // post header data
-  uint32_t sizeOfFollowingData; // unk, skipped during parsing, TODO
+  uint32_t sizeOfFadeSection; // each FadeChunk has size of 0x20 
   uint32_t sizeOfScriptSection; // size of all ScriptChunk together
   uint32_t sizeOfSoundSection;  // size of all SoundChunk together
+};
+
+struct FadeChunk
+{
+    uint32_t compressedStartWithFlags; // defines the time of end ? + some additional flags that controls fading ?
+    uint32_t timeAheadOfDarkening; // how many ms before the end of darkening should it start ?
+    float timeOfDarkening; // how long the darkening last
+    uint32_t unk;
+    uint32_t fixedCCSequence[3]; // filled with CC 
+    uint32_t fixedSequence; // CC CC CC 00
+
+    uint32_t getStartOfFadeEvent() const { return this->compressedStartWithFlags & 0xFFFFFF; }
+    uint32_t getFlags() const { return this->compressedStartWithFlags >> 24; }
+    bool isFadeIn() const { return this->getFlags() & 0x80; }
+    bool isFadeOut() const { return this->getFlags() & 0x50; }
+    std::string getFlagsAsString() const {
+        std::string flags = "";
+        if(isFadeIn())
+            flags += "FADE_IN ";
+        if(isFadeOut())
+            flags += "FADE_OUT";
+        return flags;
+    }
 };
 
 /* \brief Determines the script which is called at specified time during the
@@ -283,6 +306,7 @@ public:
   // Transformation payload TODO
   std::vector<CameraTransformationChunk> cameraPositionChunks;
   std::vector<CameraFocusChunk> camerafocusChunks;
+  std::vector<FadeChunk> fadeChunks;
   std::vector<ScriptChunk> scriptChunks;
   std::vector<SoundChunk> soundChunks;
   std::vector<DialogChunk> dialogChunks;
@@ -314,7 +338,7 @@ private:
     }
   }
 
-  void readFrameSequences(std::ifstream& stream)
+  void readObjectDefinitions(std::ifstream& stream)
   {
     std::cerr << "FrameSequence" << std::endl;
     for (size_t i = 0; i < fileHeader.countOfObjectDefinitionBlocks; i++) {
@@ -408,6 +432,7 @@ private:
       std::cerr << " [" << chunk.unkVectorSecond[0] << ", "
                 << chunk.unkVectorSecond[1] << ", " << chunk.unkVectorSecond[2]
                 << "]" << std::endl;
+      currentFile.cameraPositionChunks.push_back(chunk);
     }
 
     GETPOS(stream);
@@ -423,6 +448,7 @@ private:
       std::cerr << " [" << chunk.unkVectorSecond[0] << ", "
                 << chunk.unkVectorSecond[1] << ", " << chunk.unkVectorSecond[2]
                 << "]" << std::endl;
+      currentFile.camerafocusChunks.push_back(chunk);
     }
   }
 
@@ -432,25 +458,37 @@ private:
     ScriptsAndSoundsHeader header;
     stream.READ(header);
     std::cerr << "[EventsHeader] Size of post header section: 0x" << std::hex << header.sizeOfPostheaderData << std::dec << std::endl;
-    std::cerr << "[EventsHeader] Size of following section: 0x" << std::hex << header.sizeOfFollowingData << std::dec << std::endl;
+    std::cerr << "[EventsHeader] Size of Fade section: 0x" << std::hex << header.sizeOfFadeSection << std::dec << std::endl;
 
-    stream.seekg(header.sizeOfFollowingData+header.sizeOfPostheaderData, std::ifstream::cur);
+    stream.seekg(header.sizeOfPostheaderData, std::ifstream::cur);
 
-    uint32_t countOFFirstSection = header.sizeOfScriptSection / 40;
-    uint32_t countOFSecondSection = header.sizeOfSoundSection / 40;
-    for (size_t i = 0; i < countOFFirstSection; i++) {
+    uint32_t countOfFadeSection = header.sizeOfFadeSection/ 32;
+    uint32_t countOfScriptSection = header.sizeOfScriptSection / 40;
+    uint32_t countOfSoundSection = header.sizeOfSoundSection / 40;
+    for (size_t i = 0; i < countOfFadeSection; i++) {
+      FadeChunk chunk;
+      stream.READ(chunk);
+      std::cerr << "Fade chunk: Time: " << chunk.getStartOfFadeEvent()
+                << " Flags: 0x" << std::hex << chunk.getFlags() <<std::dec << " - " << chunk.getFlagsAsString() 
+                << " Duration: " << chunk.timeOfDarkening << std::endl;
+      currentFile.fadeChunks.push_back(chunk);
+    }
+
+    for (size_t i = 0; i < countOfScriptSection; i++) {
       ScriptChunk chunk;
       stream.READ(chunk);
       std::cerr << "Script chunk: " << chunk.timestamp
                 << " Name: " << chunk.scriptName << std::endl;
+      currentFile.scriptChunks.push_back(chunk);
     }
 
-    for (size_t i = 0; i < countOFSecondSection; i++) {
+    for (size_t i = 0; i < countOfSoundSection; i++) {
       SoundChunk chunk;
       stream.READ(chunk);
       std::cerr << "Sound chunk: " << chunk.timestamp
                 << " Type: " << chunk.getTypeStringRepresentation() << " ("
                 << chunk.type << ") Name: " << chunk.soundName << std::endl;
+      currentFile.soundChunks.push_back(chunk);
     }
   }
 
@@ -467,6 +505,7 @@ private:
                 << " ID: " << chunk.channelID << " animation ID: " << std::hex
                 << chunk.dialogID << std::dec << " Name: " << chunk.framename
                 << std::endl;
+      currentFile.dialogChunks.push_back(chunk);
     }
   }
 
@@ -491,7 +530,7 @@ public:
       }
 
       readAnimations(inputFile);
-      readFrameSequences(inputFile);
+      readObjectDefinitions(inputFile);
       readTransformation(inputFile);
       readCameraSection(inputFile);
       readScriptEvents(inputFile);
