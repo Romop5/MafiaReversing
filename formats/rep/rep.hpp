@@ -235,7 +235,7 @@ struct CameraFocusChunk
 
 struct ScriptsAndSoundsHeader
 {
-  uint32_t sizeOfPostheaderData; // post header data
+  uint32_t sizeOfPostheaderData; // TODO: unkwon, post header data
   uint32_t sizeOfFadeSection; // each FadeChunk has size of 0x20 
   uint32_t sizeOfScriptSection; // size of all ScriptChunk together
   uint32_t sizeOfSoundSection;  // size of all SoundChunk together
@@ -334,12 +334,12 @@ struct NarratorChunk
   uint32_t speechID; 
 };
 
-struct UnkChunk
+struct MorphChunk
 {
   uint32_t timestamp; 
-  uint32_t unk1;      
+  uint32_t unk1;      // when timestamp == 0, then unk1 stands for activation time     
   char frameName[32];
-  uint32_t unk2;
+  uint32_t unk2; // state ? parameter ? IDK
 };
 
 
@@ -572,9 +572,9 @@ private:
     }
 
     for (size_t i = 0; i < header.unk2; i++) {
-      UnkChunk chunk;
+      MorphChunk chunk;
       stream.READ(chunk);
-      std::cerr << "Unk chunk: timestamp: " << chunk.timestamp 
+      std::cerr << "Morph chunk: timestamp: " << chunk.timestamp 
                 << " unk: " << chunk.unk1 
                 << " frameName: " << chunk.frameName
                 << " unk: " << chunk.unk2 
