@@ -585,10 +585,26 @@ private:
 
   }
 
+  bool storeHeader(std::ofstream outputFile)
+  {
+    Header header;
+    header.magicByte = 0x31160000;
+    // Calculate size of animation section as count of animations * size of AnimationBlock
+    header.sizeOfAnimationSection = currentFile.animationBlocks.size()*sizeof(AnimationBlock);
+    header.sizeOfObjectDefinitionsSection = currentFile.objectDefinitionBlocks.size()*sizeof(AnimatedObjectDefinitions);
+  }
+
+  bool storeAnimations(std::ofstream outputFile) {}
+  bool storeObjectDefinitions(std::ofstream outputFile) {}
+  bool storeTransformation(std::ofstream outputFile) {}
+  bool storeCameraSection(std::ofstream outputFile) {}
+  bool storeScriptEvents(std::ofstream outputFile) {}
+  bool storeDialogs(std::ofstream outputFile) {}
+
+
 public:
   File loadFile(std::string fileName)
   {
-
     std::cerr << "[RepParser] Parsing file: " << fileName << std::endl;
     std::ifstream inputFile;
     inputFile.open(fileName, std::ifstream::binary);
@@ -604,17 +620,33 @@ public:
         std::cerr << "[Err] Invalid magic byte ...\n" << std::endl;
         return File();
       }
-
       readAnimations(inputFile);
       readObjectDefinitions(inputFile);
       readTransformation(inputFile);
       readCameraSection(inputFile);
       readScriptEvents(inputFile);
       readDialogs(inputFile);
+      inputFile.close();
     } else {
       std::cerr << "[Err] Failed to open file " << fileName << std::endl;
     }
     return currentFile;
+  }
+  bool storeFile(File file, std::string fileName)
+  {
+    std::cerr << "[RepParser] Parsing file: " << fileName << std::endl;
+    std::ofstream outputFile;
+    outputFile.open(fileName, std::ifstream::binary);
+    if (outputFile.is_open()) {
+      currentFile = file;
+      storeHeader(outputFile);
+      storeAnimations(outputFile);
+      storeObjectDefinitions(outputFile);
+      storeTransformation(outputFile);
+      storeCameraSection(outputFile);
+      storeScriptEvents(outputFile);
+      storeDialogs(outputFile);
+      outputFile.close();
   }
 };
 } // namespace RepFile
